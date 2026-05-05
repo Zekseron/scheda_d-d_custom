@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D&D 3.5 Ultimate Architect</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Roboto:wght@300;400;700&display=swap');
+        
+        :root { --dnd-red: #922610; --dnd-gold: #c1a35f; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f4f1ea; color: #2d2d2d; }
+        .dnd-title { font-family: 'Cinzel', serif; color: var(--dnd-red); }
+        
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #ddd; position: relative; }
+        .page-content { display: none; }
+        .page-content.active { display: block; }
+        
+        /* Stili Drag & Drop */
+        .drag-ghost { opacity: 0.4; background: #e2e8f0 !important; border: 2px dashed #6366f1 !important; }
+        .drop-zone { min-height: 60px; }
+        
+        .edit-mode .can-edit { outline: 1px dashed #cbd5e1; outline-offset: 2px; cursor: move; }
+        .edit-mode .can-edit:hover { outline-color: #6366f1; background: #f8fafc; }
+        
+        .stat-box { text-align: center; border: 2px solid var(--dnd-red); border-radius: 8px; padding: 10px; background: #fff; position: relative; }
+        .stat-label { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; color: var(--dnd-red); }
+        
+        .nav-btn.active { border-bottom: 3px solid var(--dnd-red); color: var(--dnd-red); font-weight: bold; }
+        
+        input, textarea, select { border: 1px solid #ddd; border-radius: 4px; padding: 4px 8px; width: 100%; font-size: 0.9rem; background: white; }
+        textarea { resize: vertical; }
+
+        .guide-step { border-left: 4px solid var(--dnd-red); padding-left: 1rem; margin-bottom: 1.5rem; }
+    </style>
+</head>
+<body class="pb-32">
+
+    <!-- Header Semplificato -->
+    <header class="bg-stone-900 text-white p-4 shadow-lg sticky top-0 z-50">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <h1 class="dnd-title text-xl md:text-2xl">D&D 3.5 Architect</h1>
+                <button onclick="toggleEditMode()" id="editToggleBtn" class="bg-indigo-600 hover:bg-indigo-700 text-[10px] px-3 py-1 rounded font-bold transition uppercase">
+                    Editor: OFF
+                </button>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <button onclick="exportToPDF()" class="bg-red-700 hover:bg-red-800 text-xs px-4 py-2 rounded flex items-center gap-2 transition font-bold uppercase shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    Esporta PDF
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 max-w-5xl">
+        
+        <!-- Navigazione Dinamica -->
+        <nav id="main-nav" class="flex gap-2 mb-6 overflow-x-auto pb-2 border-b border-stone-300">
+            <!-- Popolato via JS -->
+        </nav>
+
+        <div id="pages-container">
+            <!-- Il contenuto dinamico delle sezioni viene generato qui -->
+        </div>
+
+    </main>
+
+    <!-- Toolbar Editor (visibile solo in edit mode) -->
+    <div id="editor-toolbar" class="fixed bottom-0 left-0 w-full bg-indigo-900 text-white p-4 hidden z-[60] flex flex-wrap justify-center gap-3 border-t-4 border-indigo-500 shadow-2xl">
+        <button onclick="addNewSection()" class="bg-indigo-500 hover:bg-indigo-400 px-4 py-2 rounded text-xs font-bold uppercase">+ Sezione</button>
+        <button onclick="addNewSubSection()" class="bg-blue-500 hover:bg-blue-400 px-4 py-2 rounded text-xs font-bold uppercase">+ Sottosezione</button>
+        <button onclick="openFieldModal()" class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded text-xs font-bold uppercase">+ Campo</button>
+        <button onclick="resetToDefault()" class="bg-red-500 hover:bg-red-400 px-4 py-2 rounded text-[10px] font-bold uppercase opacity-80">Reset Layout</button>
+    </div>
+
+    <!-- Modale Campo -->
+    <div id="fieldModal" class="fixed inset-0 bg-black/70 hidden z-[100] flex items-center justify-center p-4">
+        <div class="bg-white p-6 rounded-lg max-w-md w-full shadow-2xl">
+            <h3 class="dnd-title text-lg mb-4">Configura Nuovo Campo</h3>
+            <div class="space-y-4 text-stone-800">
+                <div>
+                    <label class="text-xs font-bold uppercase">Etichetta Campo</label>
+                    <input type="text" id="mf-label" placeholder="Es: Divinità o CA">
+                </div>
+                <div>
+                    <label class="text-xs font-bold uppercase">Tipo di Visualizzazione</label>
+                    <select id="mf-type">
+                        <option value="text">Testo Lineare</option>
+                        <option value="number">Numero</option>
+                        <option value="textarea">Area di Testo (Note)</option>
+                        <option value="stat">Caratteristica (3.5)</option>
+                        <option value="checkbox">Checkbox (Sì/No)</option>
+                    </select>
+                </div>
+                <div class="flex gap-2 pt-4">
+                    <button onclick="closeFieldModal()" class="flex-1 bg-stone-200 py-2 rounded text-sm uppercase">Annulla</button>
+                    <button onclick="confirmAddField()" class="flex-1 bg-indigo-600 text-white py-2 rounded font-bold text-sm uppercase">Aggiungi</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAZIONE INIZIALE ---
+        const DEFAULT_LAYOUT = {
+            sections: [
+                { id: 's_guide', label: 'Guida & File', subsections: [] },
+                {
+                    id: 's_base', label: 'Personaggio', subsections: [
+                        { id: 'ss_gen', title: 'Dati Generali', fields: ['name', 'class', 'race', 'alignment', 'deity'] },
+                        { id: 'ss_prog', title: 'Progressione', fields: ['level', 'xp', 'size'] }
+                    ]
+                },
+                {
+                    id: 's_stats', label: 'Caratteristiche', subsections: [
+                        { id: 'ss_stats', title: 'Abilità Primarie', fields: ['str', 'dex', 'con', 'int', 'wis', 'cha'] }
+                    ]
+                },
+                {
+                    id: 's_combat', label: 'Combattimento', subsections: [
+                        { id: 'ss_def', title: 'Difesa', fields: ['hp', 'ac', 'touch', 'flatfooted', 'init'] },
+                        { id: 'ss_saves', title: 'Tiri Salvezza', fields: ['fort', 'ref', 'will'] },
+                        { id: 'ss_atk', title: 'Offesa', fields: ['bab', 'melee', 'ranged'] }
+                    ]
+                },
+                {
+                    id: 's_extra', label: 'Extra & Note', subsections: [
+                        { id: 'ss_equip', title: 'Equipaggiamento', fields: ['gold', 'items'] },
+                        { id: 'ss_notes', title: 'Diario', fields: ['notes'] }
+                    ]
+                }
+            ],
+            fieldDefinitions: {
+                name: { label: 'Nome', type: 'text' },
+                class: { label: 'Classe', type: 'text' },
+                race: { label: 'Razza', type: 'text' },
+                alignment: { label: 'Allineamento', type: 'text' },
+                deity: { label: 'Divinità', type: 'text' },
+                level: { label: 'Livello', type: 'number' },
+                xp: { label: 'PX', type: 'number' },
+                size: { label: 'Taglia', type: 'text' },
+                str: { label: 'Forza', type: 'stat' },
+                dex: { label: 'Destrezza', type: 'stat' },
+                con: { label: 'Costituzione', type: 'stat' },
+                int: { label: 'Intelligenza', type: 'stat' },
+                wis: { label: 'Saggezza', type: 'stat' },
+                cha: { label: 'Carisma', type: 'stat' },
+                hp: { label: 'Punti Ferita', type: 'number' },
+                ac: { label: 'Classe Armatura', type: 'number' },
+                touch: { label: 'Contatto', type: 'number' },
+                flatfooted: { label: 'Colto alla Sprovvista', type: 'number' },
+                init: { label: 'Iniziativa', type: 'number' },
+                fort: { label: 'Tempra', type: 'number' },
+                ref: { label: 'Riflessi', type: 'number' },
+                will: { label: 'Volontà', type: 'number' },
+                bab: { label: 'BAB', type: 'text' },
+                melee: { label: 'Mischia', type: 'text' },
+                ranged: { label: 'Distanza', type: 'text' },
+                gold: { label: 'Monete d\'oro', type: 'number' },
+                items: { label: 'Zaino', type: 'textarea' },
+                notes: { label: 'Note Campagna', type: 'textarea' }
+            }
+        };
+
+        let layout = JSON.parse(localStorage.getItem('dnd_v3_layout')) || JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
+        let charData = JSON.parse(localStorage.getItem('dnd_v3_data')) || {};
+        let isEditMode = false;
+        let activeSectionId = layout.sections[0]?.id || 's_guide';
+
+        // --- CORE RENDERING ---
+        function renderAll() {
+            renderNav();
+            renderPages();
+            if (isEditMode) initDragAndDrop();
+        }
+
+        function renderNav() {
+            const nav = document.getElementById('main-nav');
+            nav.innerHTML = '';
+            layout.sections.forEach(s => {
+                const btn = document.createElement('button');
+                btn.className = `nav-btn px-4 py-2 text-xs uppercase font-bold transition whitespace-nowrap flex items-center gap-2 ${s.id === activeSectionId ? 'active' : ''}`;
+                
+                let labelHtml = (isEditMode && s.id !== 's_guide') ? `<span contenteditable="true" onblur="renameSection('${s.id}', this.innerText)" class="px-1 border-b border-dashed border-indigo-300">${s.label}</span>` : s.label;
+                let removeHtml = (isEditMode && s.id !== 's_guide') ? `<span onclick="removeSection('${s.id}')" class="text-red-500 hover:scale-125 transition">×</span>` : '';
+                
+                btn.innerHTML = `${labelHtml} ${removeHtml}`;
+                btn.onclick = (e) => { 
+                    if(e.target.tagName !== 'SPAN' || !e.target.hasAttribute('contenteditable')) switchSection(s.id); 
+                };
+                nav.appendChild(btn);
+            });
+        }
+
+        function renderPages() {
+            const container = document.getElementById('pages-container');
+            container.innerHTML = '';
+
+            layout.sections.forEach(s => {
+                const page = document.createElement('div');
+                page.className = `page-content space-y-6 ${s.id === activeSectionId ? 'active' : ''}`;
+                page.id = `page-${s.id}`;
+
+                if (s.id === 's_guide') {
+                    page.innerHTML = renderGuidePage();
+                } else {
+                    s.subsections.forEach(ss => {
+                        const subCard = document.createElement('div');
+                        subCard.className = "card p-5 subsection-block shadow-sm hover:shadow-md transition-shadow";
+                        subCard.dataset.ssId = ss.id;
+                        
+                        let headerHtml = `<div class="flex justify-between items-center mb-4 border-b pb-2">
+                            <h3 class="dnd-title font-bold text-sm ${isEditMode ? 'can-edit px-2 py-1' : ''}" contenteditable="${isEditMode}" onblur="renameSubSection('${s.id}', '${ss.id}', this.innerText)">${ss.title}</h3>
+                            ${isEditMode ? `<button onclick="removeSubSection('${s.id}', '${ss.id}')" class="text-red-400 text-[10px] uppercase font-bold hover:text-red-600 transition">Rimuovi</button>` : ''}
+                        </div>`;
+
+                        const fieldsContainer = document.createElement('div');
+                        fieldsContainer.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 drop-zone";
+                        fieldsContainer.dataset.ssId = ss.id;
+
+                        ss.fields.forEach(fId => {
+                            const fDef = layout.fieldDefinitions[fId];
+                            if (!fDef) return;
+                            const fieldWrapper = document.createElement('div');
+                            fieldWrapper.className = `field-item ${isEditMode ? 'can-edit p-2 bg-stone-50 rounded' : ''} ${fDef.type === 'textarea' ? 'md:col-span-full' : ''}`;
+                            fieldWrapper.dataset.fId = fId;
+                            fieldWrapper.innerHTML = renderFieldHtml(fId, fDef);
+                            fieldsContainer.appendChild(fieldWrapper);
+                        });
+
+                        subCard.innerHTML = headerHtml;
+                        subCard.appendChild(fieldsContainer);
+                        page.appendChild(subCard);
+                    });
+                }
+                container.appendChild(page);
+            });
+        }
+
+        function renderGuidePage() {
+            return `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="card p-6">
+                        <h2 class="dnd-title text-xl mb-4 font-bold flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                            Gestione File & Backup
+                        </h2>
+                        <div class="space-y-4">
+                            <div class="guide-step">
+                                <p class="text-sm font-bold mb-2">Carica Scheda (.json)</p>
+                                <p class="text-xs text-gray-500 mb-2">Importa un file precedentemente salvato per riprendere la sessione.</p>
+                                <input type="file" accept=".json" onchange="loadFromFile(event)" class="text-xs bg-stone-100 p-2 cursor-pointer w-full rounded border border-dashed border-stone-400">
+                            </div>
+                            <div class="guide-step">
+                                <p class="text-sm font-bold mb-2">Salva Progressi (.json)</p>
+                                <button onclick="saveToFile()" class="bg-indigo-600 text-white px-4 py-2 rounded text-xs uppercase font-bold w-full hover:bg-indigo-700 shadow transition-colors">Scarica Backup JSON</button>
+                                <p class="text-[10px] text-gray-500 mt-2 italic">Consiglio: Salva spesso il file JSON per non perdere le modifiche al layout dell'Architetto.</p>
+                            </div>
+                            <div class="guide-step">
+                                <p class="text-sm font-bold mb-2">Reset</p>
+                                <button onclick="resetToDefault()" class="bg-stone-200 text-stone-700 px-4 py-2 rounded text-xs uppercase font-bold w-full hover:bg-red-600 hover:text-white transition-all">Ripristina Layout Predefinito</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card p-6">
+                        <h2 class="dnd-title text-xl mb-4 font-bold flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-600"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                            Guida Rapida
+                        </h2>
+                        <ul class="space-y-4 text-sm text-stone-700">
+                            <li class="flex gap-2">
+                                <span class="bg-indigo-100 text-indigo-700 font-bold px-2 rounded h-fit">1</span>
+                                <div><strong>Editor:</strong> Attiva l'interruttore in alto per modificare la struttura. Puoi trascinare i campi (Drag & Drop) ovunque.</div>
+                            </li>
+                            <li class="flex gap-2">
+                                <span class="bg-indigo-100 text-indigo-700 font-bold px-2 rounded h-fit">2</span>
+                                <div><strong>Dati:</strong> I valori inseriti vengono salvati automaticamente nel browser.</div>
+                            </li>
+                            <li class="flex gap-2">
+                                <span class="bg-indigo-100 text-indigo-700 font-bold px-2 rounded h-fit">3</span>
+                                <div><strong>Esportazione:</strong> Usa il tasto "Esporta PDF" nell'header per generare una versione stampabile della scheda.</div>
+                            </li>
+                        </ul>
+                        <div class="mt-8 p-4 bg-stone-100 rounded-lg border border-stone-200">
+                             <p class="text-xs text-stone-600"><strong>D&D 3.5 Core:</strong> Il sistema calcola automaticamente i modificatori di caratteristica (es: For 18 = Mod +4).</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderFieldHtml(id, def) {
+            const val = charData[id] || '';
+            const deleteBtn = isEditMode ? `<button onclick="removeFieldFromLayout('${id}')" class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center shadow-lg z-10 hover:bg-red-800 transition">×</button>` : '';
+            
+            let inputPart = '';
+            switch(def.type) {
+                case 'stat':
+                    const mod = Math.floor(((val || 10) - 10) / 2);
+                    inputPart = `<div class="stat-box">
+                        <label class="stat-label">${def.label}</label>
+                        <input type="number" value="${val || 10}" oninput="updateVal('${id}', this.value)">
+                        <div class="text-[10px] mt-1 text-gray-500 font-bold">MOD: ${mod >= 0 ? '+' : ''}${mod}</div>
+                    </div>`;
+                    break;
+                case 'textarea':
+                    inputPart = `<label class="text-[10px] font-bold uppercase text-stone-500 block mb-1">${def.label}</label>
+                                <textarea oninput="updateVal('${id}', this.value)" rows="3" class="w-full">${val}</textarea>`;
+                    break;
+                case 'checkbox':
+                    inputPart = `<label class="flex items-center gap-2 py-3 cursor-pointer group">
+                                    <input type="checkbox" ${val ? 'checked' : ''} onchange="updateVal('${id}', this.checked)" class="w-5 h-5 border-2 border-stone-400 rounded transition group-hover:border-indigo-500">
+                                    <span class="text-xs font-bold uppercase text-stone-700">${def.label}</span>
+                                </label>`;
+                    break;
+                default:
+                    inputPart = `<label class="text-[10px] font-bold uppercase text-stone-500 block mb-1">${def.label}</label>
+                                <input type="${def.type}" value="${val}" oninput="updateVal('${id}', this.value)" class="w-full">`;
+            }
+            return `<div class="relative">${deleteBtn}${inputPart}</div>`;
+        }
+
+        // --- DRAG AND DROP ---
+        function initDragAndDrop() {
+            document.querySelectorAll('.drop-zone').forEach(el => {
+                new Sortable(el, {
+                    group: 'shared-fields',
+                    animation: 200,
+                    ghostClass: 'drag-ghost',
+                    onEnd: (evt) => {
+                        const fromSsId = evt.from.dataset.ssId;
+                        const toSsId = evt.to.dataset.ssId;
+                        const fieldId = evt.item.dataset.fId;
+                        moveFieldInLayout(fieldId, fromSsId, toSsId, evt.newIndex);
+                    }
+                });
+            });
+        }
+
+        function moveFieldInLayout(fId, fromSsId, toSsId, newIndex) {
+            layout.sections.forEach(s => {
+                s.subsections.forEach(ss => {
+                    if (ss.id === fromSsId) ss.fields = ss.fields.filter(id => id !== fId);
+                });
+            });
+            layout.sections.forEach(s => {
+                s.subsections.forEach(ss => {
+                    if (ss.id === toSsId) ss.fields.splice(newIndex, 0, fId);
+                });
+            });
+            saveLayout();
+        }
+
+        // --- AZIONI ARCHITETTO ---
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            document.body.classList.toggle('edit-mode', isEditMode);
+            document.getElementById('editor-toolbar').classList.toggle('hidden', !isEditMode);
+            document.getElementById('editToggleBtn').innerText = `Editor: ${isEditMode ? 'ON' : 'OFF'}`;
+            renderAll();
+        }
+
+        function addNewSection() {
+            const name = prompt("Nome nuova sezione:");
+            if (!name) return;
+            const id = 's_' + Date.now();
+            layout.sections.push({ id, label: name, subsections: [] });
+            activeSectionId = id;
+            saveLayout();
+            renderAll();
+        }
+
+        function renameSection(id, newName) {
+            const s = layout.sections.find(x => x.id === id);
+            if (s) s.label = newName;
+            saveLayout();
+        }
+
+        function removeSection(id) {
+            if (id === 's_guide') return alert("Non puoi rimuovere la sezione Guida.");
+            if (!confirm("Eliminare intera sezione e contenuto?")) return;
+            layout.sections = layout.sections.filter(s => s.id !== id);
+            if (activeSectionId === id && layout.sections.length > 0) activeSectionId = layout.sections[0].id;
+            saveLayout();
+            renderAll();
+        }
+
+        function addNewSubSection() {
+            if (activeSectionId === 's_guide') return alert("Non puoi aggiungere sottosezioni alla guida.");
+            const title = prompt("Titolo sottosezione (Card):");
+            if (!title) return;
+            const currentSection = layout.sections.find(s => s.id === activeSectionId);
+            currentSection.subsections.push({ id: 'ss_' + Date.now(), title: title, fields: [] });
+            saveLayout();
+            renderAll();
+        }
+
+        function renameSubSection(sId, ssId, newTitle) {
+            const s = layout.sections.find(x => x.id === sId);
+            if(s) {
+                const ss = s.subsections.find(x => x.id === ssId);
+                if(ss) ss.title = newTitle;
+            }
+            saveLayout();
+        }
+
+        function removeSubSection(sId, ssId) {
+            const s = layout.sections.find(x => x.id === sId);
+            s.subsections = s.subsections.filter(ss => ss.id !== ssId);
+            saveLayout();
+            renderAll();
+        }
+
+        function openFieldModal() {
+            if (activeSectionId === 's_guide') return alert("Non puoi aggiungere campi alla guida.");
+            const currentSection = layout.sections.find(s => s.id === activeSectionId);
+            if (!currentSection || currentSection.subsections.length === 0) {
+                alert("Crea prima una sottosezione in questa pagina!");
+                return;
+            }
+            document.getElementById('fieldModal').classList.remove('hidden');
+        }
+
+        function closeFieldModal() { document.getElementById('fieldModal').classList.add('hidden'); }
+
+        function confirmAddField() {
+            const label = document.getElementById('mf-label').value;
+            const type = document.getElementById('mf-type').value;
+            if (!label) return;
+
+            const fId = 'f_' + Date.now();
+            layout.fieldDefinitions[fId] = { label, type };
+            const s = layout.sections.find(x => x.id === activeSectionId);
+            s.subsections[0].fields.push(fId);
+
+            saveLayout();
+            closeFieldModal();
+            renderAll();
+        }
+
+        function removeFieldFromLayout(fId) {
+            layout.sections.forEach(s => {
+                s.subsections.forEach(ss => {
+                    ss.fields = ss.fields.filter(id => id !== fId);
+                });
+            });
+            delete layout.fieldDefinitions[fId];
+            saveLayout();
+            renderAll();
+        }
+
+        // --- UTILS ---
+        function switchSection(id) { activeSectionId = id; renderAll(); }
+        function updateVal(id, val) { charData[id] = val; localStorage.setItem('dnd_v3_data', JSON.stringify(charData)); if(layout.fieldDefinitions[id]?.type === 'stat') renderAll(); }
+        function saveLayout() { localStorage.setItem('dnd_v3_layout', JSON.stringify(layout)); }
+        function resetToDefault() { if(confirm("Ripristinare layout originale?")) { localStorage.clear(); location.reload(); } }
+        
+        function saveToFile() { 
+            const bundle = { layout, charData };
+            const blob = new Blob([JSON.stringify(bundle)], {type:'application/json'});
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = `dnd_3.5_${charData.name || 'character'}.json`; a.click();
+        }
+
+        function loadFromFile(e) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const bundle = JSON.parse(ev.target.result);
+                    if(bundle.layout && bundle.charData) {
+                        layout = bundle.layout;
+                        charData = bundle.charData;
+                        saveLayout();
+                        localStorage.setItem('dnd_v3_data', JSON.stringify(charData));
+                        renderAll();
+                        alert("Caricamento completato!");
+                    }
+                } catch(err) { alert("File non valido."); }
+            };
+            if(e.target.files[0]) reader.readAsText(e.target.files[0]);
+        }
+
+        function exportToPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            let y = 20;
+            doc.setFontSize(22).setFont(undefined, 'bold').text("D&D 3.5 - SCHEDA PERSONAGGIO", 105, y, { align: 'center' });
+            y += 15;
+            
+            layout.sections.filter(s => s.id !== 's_guide').forEach(s => {
+                if (y > 250) { doc.addPage(); y = 20; }
+                doc.setFontSize(14).setTextColor(146, 38, 16).text(s.label.toUpperCase(), 10, y);
+                y += 8;
+                s.subsections.forEach(ss => {
+                    doc.setFontSize(10).setTextColor(100).setFont(undefined, 'bold').text(ss.title, 12, y);
+                    y += 6;
+                    ss.fields.forEach(fId => {
+                        const def = layout.fieldDefinitions[fId];
+                        const val = charData[fId] || (def.type === 'stat' ? '10' : '---');
+                        doc.setFontSize(9).setTextColor(0).setFont(undefined, 'normal');
+                        if(def.type === 'textarea') {
+                            const lines = doc.splitTextToSize(val.toString(), 160);
+                            doc.text(`${def.label}:`, 15, y); y += 5;
+                            doc.text(lines, 20, y); y += (lines.length * 5) + 2;
+                        } else {
+                            doc.text(`${def.label}: ${val}`, 15, y); y += 5;
+                        }
+                        if (y > 275) { doc.addPage(); y = 20; }
+                    });
+                    y += 4;
+                });
+                y += 5;
+            });
+            doc.save(`D&D_3.5_Scheda_${charData.name || 'Personaggio'}.pdf`);
+        }
+
+        window.onload = renderAll;
+    </script>
+</body>
+</html>
